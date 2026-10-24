@@ -10,7 +10,7 @@ Meshes are posed in-process rather than saved: 11,200 mesh npz files would cost 
 of disk for data that's a deterministic function of (edit, candidate, t). The pixi
 env's `anny` import stays loaded and Mitsuba renders each frame directly from the
 posed vertices, one .npz file per frame written under
-build/edit/video/<edit>/<candidate>/frame_<i>.png (plus .aov.npz sidecar per RFD 1173's
+build/edit/video/<edit>/<candidate>/frame_<i>.png (plus .aov.npz sidecar per RFD66606-1173's
 Video stub schema).
 
 The 5 candidates match the still-image spec:

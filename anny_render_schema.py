@@ -300,7 +300,7 @@ SEGMENTATION = pa.schema([
     ("mask", pa.binary()),              # PNG-encoded label map
 ])
 
-# Pixal3D's half of the corpus. RFD 0122 fixes the output set at three: the
+# Pixal3D's half of the corpus. RFD66606-0122 fixes the output set at three: the
 # image, the keypoint positions, and the 3D shape. The first two were here and
 # this was not, so the renderer had nowhere to put the one thing the second
 # consumer asks for.
@@ -314,7 +314,7 @@ MESHES = pa.schema([
     # a consumer that reads this geometry to look up a vertex_id has to know which of the two it
     # got. Recording it costs one byte and removes a guess.
     ("topology_id", pa.int8()),
-    ("geometry", pa.binary()),          # USD, per RFD 0053
+    ("geometry", pa.binary()),          # USD, per RFD66606-0053
 ])
 
 # --------------------------------------------------------------------------
