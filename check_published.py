@@ -124,7 +124,7 @@ def main() -> int:
             if required not in names:
                 problems.append("%s has no %s" % (repo_id, required))
 
-    # THE CARD MUST NAME THE CODE. RFD 1141's whole point is that an artifact reaches back.
+    # THE CARD MUST NAME THE CODE. RFD66606-1141's whole point is that an artifact reaches back.
     print("\ncards reach the code")
     for repo_id, kind in repos:
         if repo_id not in listings:

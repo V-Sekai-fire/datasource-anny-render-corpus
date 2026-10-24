@@ -1,6 +1,6 @@
 """Render the DEPTH MAP, from the same camera that projected the keypoints.
 
-Depth is the conditioning signal, not a by-product. RFD 0121's pipeline stylises an ANNY
+Depth is the conditioning signal, not a by-product. RFD66606-0121's pipeline stylises an ANNY
 render with Qwen-Image under an Apache-2.0 depth ControlNet, and depth is what pins the
 geometry so the generated image keeps the pose the labels describe. A flat shaded render is
 not the training image and never was: the training image is what the generator returns.

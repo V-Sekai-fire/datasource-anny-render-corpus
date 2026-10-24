@@ -3,7 +3,7 @@
 Each Video-stub artifact carries in a single self-contained USDZ package:
 
   SkelRoot
-   |- Mesh (rest ANNY body, 18,056 verts) with real skin weights per RFD 2162.1
+   |- Mesh (rest ANNY body, 18,056 verts) with real skin weights per RFD66606-2162.1
    |- Skeleton (104 ANNY joints at rest -- edits do not move bones yet;
       real bind + rest transforms so a future pose-animated candidate binds)
    |- SkelAnimation (blendShapeWeights time samples, 224 frames; no joint anim)
@@ -15,7 +15,7 @@ Time samples are stored in `blendShapeWeights` as one array per frame; only the
 edit's target actions ramp from 0 -> endpoint over the frame range, others stay 0.
 CandidateS differ in their endpoint values per MASKSCORE.md's 5-rank spec.
 
-USDZ per RFD 1173 / CLAUDE.md's OpenUSD rule; usdz is the container the zip ban
+USDZ per RFD66606-1173 / CLAUDE.md's OpenUSD rule; usdz is the container the zip ban
 exempts.
 
 Usage:
@@ -78,7 +78,7 @@ def build_stage(work_dir: pathlib.Path, blendshapes_npz: pathlib.Path,
     mesh.CreateFaceVertexIndicesAttr(Vt.IntArray.FromNumpy(faces.reshape(-1).astype(np.int32)))
     mesh.CreateFaceVertexCountsAttr(Vt.IntArray([3] * faces.shape[0]))
 
-    # RFD 2162.1: author the full 104-joint ANNY skeleton with real bind + rest
+    # RFD66606-2162.1: author the full 104-joint ANNY skeleton with real bind + rest
     # transforms and per-vertex skin weights, so a downstream tool that reads
     # the USDZ can render pose-animated candidates instead of silently
     # collapsing them to the single dummy joint the earlier version used.

@@ -328,7 +328,7 @@ What is not in question: raw frames never enter git. One second of 4K60 RGBA is 
 fifteen seconds is 29.9 GB, and every frame is derivable from this repository plus a seed,
 so they are generated in the same sense `testshape.obj` and the Slang C++ are.
 
-What is in question is the ENCODED clip. RFD 1141 already says artifacts go to Hugging Face
+What is in question is the ENCODED clip. RFD66606-1141 already says artifacts go to Hugging Face
 with a `CITATION.cff` and a name reaching back to the code, and a CineForm master of a tone
 sweep is an artifact by that definition. Against that: sixty frames encode to 168 MB, so a
 fifteen-second master is about 2.5 GB, and the clip is an argument about the corpus rather
@@ -336,7 +336,7 @@ than data anyone trains on.
 
 Three ways it could go, none of them chosen yet:
 
-- **Publish it** as a Hugging Face model or dataset repository under RFD 1141's rule, which
+- **Publish it** as a Hugging Face model or dataset repository under RFD66606-1141's rule, which
   is what that rule was written for and what its naming convention already covers.
 - **Keep it local**, as the working output of a gate, and regenerate it when the tone ladder
   changes. The `.cff` beside it on the desktop already carries the provenance.

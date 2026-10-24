@@ -1,4 +1,4 @@
-"""RFD 2196/2197: emit the OmniGen2 azimuth ladder as an EditScore-shaped dataset.
+"""RFD66606-2196/2197: emit the OmniGen2 azimuth ladder as an EditScore-shaped dataset.
 
 The EditScore ladder shape is a candidate measured against a baseline on the
 same prompts. Here the baseline is the base model and the candidate is the same

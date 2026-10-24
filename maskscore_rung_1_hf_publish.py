@@ -1,4 +1,4 @@
-"""RFD 2197: join maskscore-rung-1-bootstrap into HF viewer-friendly configs."""
+"""RFD66606-2197: join maskscore-rung-1-bootstrap into HF viewer-friendly configs."""
 from __future__ import annotations
 
 import argparse

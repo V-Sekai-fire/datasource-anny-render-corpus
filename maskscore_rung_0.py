@@ -2,7 +2,7 @@
 
 Rung 0's purpose is to prove the pipeline runs end-to-end: one input asset in,
 eight stub rows out — one per modality (text, mesh, speech, multimodal,
-keypoints, depth, video, pose). Each row conforms to the schema RFD 1173's
+keypoints, depth, video, pose). Each row conforms to the schema RFD66606-1173's
 `MASKSCORE.md` defines. Scoring is via render-and-compare through the ANNY
 canonical mesh via Mitsuba 3 on `sphere_hammersley_sequence` views (L1 on
 depth/normals, SSIM on normals, LPIPS on normals) — the one universal metric.

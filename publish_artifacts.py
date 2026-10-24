@@ -1,6 +1,6 @@
 """Publish a corpus and a trained adapter to Hugging Face, with the card that makes them usable.
 
-RFD 1141 gives the rule; this applies it. Code stays on GitHub, artifacts go to the hub, and
+RFD66606-1141 gives the rule; this applies it. Code stays on GitHub, artifacts go to the hub, and
 each names the other, because an artifact nobody can trace back to the code that made it is a
 file rather than a result.
 
@@ -33,7 +33,7 @@ import subprocess
 import sys
 
 # The GitHub repository these artifacts come from, and the side of the hexagon it sits on.
-# RFD 1141 requires both in the card: a reader who finds the artifact first has to be able to
+# RFD66606-1141 requires both in the card: a reader who finds the artifact first has to be able to
 # reach the code, and the side is what says where the code belongs.
 SOURCE_REPO = "https://github.com/weftspun/anny-render-corpus"
 SOURCE_SIDE = "6-datasource"

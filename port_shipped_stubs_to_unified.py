@@ -1,7 +1,7 @@
 """urn:oid:1.3.6.1.4.1.66606.1.2.2165.2 -- port 5 shipped stubs to unified schema.
 
 Reads each stub's three wide-form parquets (mesh, depth, pose, keypoints,
-multimodal) and rewrites them under the schema module from RFD 2165.1
+multimodal) and rewrites them under the schema module from RFD66606-2165.1
 (maskscore_stub_schema). Changes:
 
   root       drop stub-specific `poses` column; move into root_extras

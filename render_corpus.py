@@ -1,6 +1,6 @@
 """Render ANNY with the answers already on the picture.
 
-RFD 0122's rung 1. The corpus cannot be fetched: no licence-clean wholebody keypoint set
+RFD66606-0122's rung 1. The corpus cannot be fetched: no licence-clean wholebody keypoint set
 exists, and the one in this workspace is blocklisted because it contains the whole blinded
 holdout. So the labels are made rather than found.
 
@@ -33,7 +33,7 @@ keypoints on a different body.
 
 VERTEX ORDER IS FROZEN, which is stronger than the count. `coco.pth` is indexed by vertex and
 every hm08 group is a range, so a permutation keeps 19,158, still multiplies, and moves every
-keypoint and every group boundary. RFD 0121 records the face-index hash that pins it.
+keypoint and every group boundary. RFD66606-0121 records the face-index hash that pins it.
 """
 
 import argparse
@@ -129,7 +129,7 @@ def rasterise_depth(verts_px, verts_depth, faces, width, height):
     """Triangle z-buffer, in numpy. Returns depth in camera units and the silhouette.
 
     Blender is not on this path. Depth is the conditioning signal for the generator under
-    RFD 0121's ControlNet, so it is the output that matters most, and headless Blender wrote
+    RFD66606-0121's ControlNet, so it is the output that matters most, and headless Blender wrote
     no Z pass through two engines: Workbench has no compositor passes at all, and EEVEE
     produced a uniform grey frame with no body in it.
 
@@ -262,7 +262,7 @@ def visibility(kp_px, kp_depth, verts_px, verts_depth, width, height, tol=0.02):
 
 
 def stick_figure(kp_px, vis, names, width, height, edges):
-    """The check RFD 0122 asks for before any of this is scaled up.
+    """The check RFD66606-0122 asks for before any of this is scaled up.
 
     Not decoration. The pose sources are all locomotion, and if a character artist would not
     draw these poses the corpus is wrong however correct the labels are. Twenty of these

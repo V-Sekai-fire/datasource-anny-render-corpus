@@ -1,6 +1,6 @@
 """urn:oid:1.3.6.1.4.1.66606.1.2.2164.4 -- emit MaskScore Speech-stub parquets.
 
-Three ZSTD parquets in ETNF form per RFD 1173.2164:
+Three ZSTD parquets in ETNF form per RFD66606-1173.2164:
 
   maskscore_speech.parquet             root row per SpeakingFaces clip (15 rows).
   maskscore_speech_candidates.parquet  20 candidates per clip (10 audio + 10
@@ -9,13 +9,13 @@ Three ZSTD parquets in ETNF form per RFD 1173.2164:
                                        distance to canonical per transcript
                                        candidate. Long-form metric_name/value.
 
-Audio candidates come from voice_clone_10rank.py (RFD 2164.2.1/.2.2). Transcript
-candidates come from the 12-track ASR panel (RFD 2164.1) reduced to 10 by
+Audio candidates come from voice_clone_10rank.py (RFD66606-2164.2.1/.2.2). Transcript
+candidates come from the 12-track ASR panel (RFD66606-2164.1) reduced to 10 by
 dropping the two allosaurus language-control tracks and ordering the rest by
 canonical closeness: voxtral -> whisper -> parakeet -> gemma-auto -> wav2vec2 ->
 ipa-whisper-s -> ipa-whisper-b -> voxtral-ipa -> gemma-ipa -> allosaurus.
 
-Scores read from build/voice_clones/scores.json (RFD 2164.3.2 rerun).
+Scores read from build/voice_clones/scores.json (RFD66606-2164.3.2 rerun).
 
 Usage:
     pixi run --environment anny-mac python emit_speech_stub.py \
@@ -45,7 +45,7 @@ TRANSCRIPT_RANK_ORDER = [
 AUDIO_RANKS = list(range(1, 11))
 
 # Rank scheme baked in as convention rather than looked up from voice_clones/manifest.json
-# because RFD 2164.2.2 partial re-clone overwrote the manifest with only rank9/10 entries.
+# because RFD66606-2164.2.2 partial re-clone overwrote the manifest with only rank9/10 entries.
 # The wavs for ranks 1-10 do exist on disk; this dict reconstructs their intent.
 AUDIO_KIND_BY_RANK = {
     1:  "identity",         2: "pitch_up_mild",     3: "pitch_down_mild",
