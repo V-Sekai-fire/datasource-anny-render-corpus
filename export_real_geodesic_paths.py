@@ -1,11 +1,24 @@
 """Export REAL curved geodesic polylines (via the actual flip_geodesics CLI,
-post-FlipOut-straightening / post-Delaunay) for every settled field that has
-a path, for the Godot x-ray contact-sheet render.
+post-FlipOut-straightening / post-Delaunay) for every settled surface-
+geodesic field, for the Godot x-ray contact-sheet render, and compute
+every other field's real value with the CORRECT operation.
 
-Also computes the 4 remaining angle/derived fields (shoulder_incl,
-hip_inclination, arm_pose_angle, crotch_hip_diff) from the real ANNY bone
-skeleton's own rotation matrices -- not approximated, closing the last gap
-from the frontier-learning pass.
+CORRECTED 2026-11-08 against the actual published reference
+implementation (github.com/mbotsch/GarmentMeasurements, the real C++
+source behind GarmentCodeData, arxiv.org/abs/2405.17609v3) -- read
+directly, not re-derived from paper prose:
+  - shoulder_w, armscye_depth, bust_points, bum_points: Euclidean
+    straight-line distance (measure_landmark_distance_euclidean), not a
+    surface geodesic.
+  - neck_w: the full neck ring's edge-loop length (measure_vertex_trace),
+    not a left-right chord.
+  - leg_circ: plane shifted down until both legs separate; MINIMUM of
+    the two legs at that one height.
+  - head_l: nape-of-neck landmark to crown (measure_head_l), not jaw.
+  - shoulder_incl, hip_inclination, arm_pose_angle: the real
+    angle_plane_vec formula (plane-normal vs. landmark-vector angle),
+    not a bone-rotation comparison.
+See CHANGELOG.md for every old -> new value.
 """
 import json
 import pathlib
@@ -68,6 +81,10 @@ def leftmost_rightmost(loop_pts):
     return loop_pts[i_left], loop_pts[i_right]
 
 
+def rightmost(loop_pts):
+    return loop_pts[int(np.argmax(loop_pts[:, 0]))]
+
+
 def back_side_leftmost_rightmost(loop_pts):
     y_mean = loop_pts[:, 1].mean()
     back = loop_pts[loop_pts[:, 1] < y_mean]
@@ -78,6 +95,15 @@ def back_side_leftmost_rightmost(loop_pts):
     return back[i_left], back[i_right]
 
 
+def angle_plane_vec(plane_n, vector):
+    """The EXACT published angle_plane_vec formula
+    (mbotsch/GarmentMeasurements measurement_utils.cpp)."""
+    v = vector / np.linalg.norm(vector)
+    cos_angle = np.clip(np.dot(plane_n, v), -1.0, 1.0)
+    theta = np.arccos(cos_angle) - np.pi / 2
+    return float(-theta * 180.0 / np.pi)
+
+
 def export_path(name, a, b):
     out_json = PATHS_DIR / f"{name}.json"
     r = subprocess.run(
@@ -85,8 +111,13 @@ def export_path(name, a, b):
          f"--export-path={out_json}"],
         capture_output=True, text=True, timeout=30,
     )
-    print(name, "path", a, b, "->", r.stdout.strip().splitlines()[:2])
-    return str(out_json)
+    lines = r.stdout.strip().splitlines()
+    print(name, "path", a, b, "->", lines[:2])
+    geo_len = None
+    for line in lines:
+        if line.startswith("GEODESIC_LENGTH"):
+            geo_len = float(line.split()[1]) * M_TO_CM
+    return str(out_json), geo_len
 
 
 def export_loop(name, ring):
@@ -97,12 +128,18 @@ def export_loop(name, ring):
          f"--export-path={out_json}"],
         capture_output=True, text=True, timeout=30,
     )
-    print(name, "loop", len(ring), "verts ->", r.stdout.strip().splitlines()[:2])
-    return str(out_json)
+    lines = r.stdout.strip().splitlines()
+    print(name, "loop", len(ring), "verts ->", lines[:2])
+    delaunay_len = None
+    for line in lines:
+        if line.startswith("DELAUNAY_LENGTH"):
+            delaunay_len = float(line.split()[1]) * M_TO_CM
+    return str(out_json), delaunay_len
 
 
 BONE = {"LeftArm": 13, "RightArm": 41, "LeftShoulder": 12, "RightShoulder": 40,
-        "Hips": 1, "Chest": 4, "LeftLeg": 68, "LeftShin": 69, "Neck1": 5, "Neck2": 6}
+        "Hips": 1, "Chest": 4, "LeftLeg": 68, "LeftShin": 69, "RightLeg": 73,
+        "Neck1": 5, "Neck2": 6, "LeftForeArm": 14, "LeftHand": 15, "HeadEnd": 8}
 
 
 def bone_pos(name):
@@ -139,14 +176,18 @@ torso_heights = {"waist": z_scan[waist_idx], "hips": z_scan[hips_idx],
 
 manifest = {}
 
-# circumference loops
+# circumference loops (real flip_geodesics loops; these are the classic
+# tape-measurable circumferences -- a tape physically wrapped around the
+# body -- so they always use the real Delaunay-tightened geodesic loop,
+# never a straight-edge approximation)
+loop_lengths = {}
 for name, z in torso_heights.items():
     lp = section_loop([0, 0, z], [0, 0, 1], [0, 0, z])
     if lp is not None:
         ring = ring_from_loop(lp)
-        manifest[name] = export_loop(name, ring)
+        manifest[name], loop_lengths[name] = export_loop(name, ring)
 
-# leg_circ / wrist
+
 def limb_profile(head_pos, tail_pos, n, margin):
     head_pos, tail_pos = np.asarray(head_pos), np.asarray(tail_pos)
     axis = tail_pos - head_pos
@@ -166,98 +207,148 @@ def limb_profile(head_pos, tail_pos, n, margin):
     return out, ts
 
 
+# leg_circ CORRECTED 2026-11-08: the published method shifts the plane
+# DOWN from the crotch until BOTH legs separate into two loops, then
+# takes the MINIMUM of the two at that ONE height -- not a scan along
+# the limb for a maximum. Tape-measurable circumference -> real
+# Delaunay-tightened geodesic loop, not the raw plane-cut perimeter.
 hip_pos = bone_pos("LeftLeg")
-knee_pos = bone_pos("LeftShin")
-thigh_profile, thigh_ts = limb_profile(hip_pos, knee_pos, 40, 0.15)
-thigh_perims = [p for p, _ in thigh_profile]
-leg_idx = int(np.nanargmax(thigh_perims))
-manifest["leg_circ"] = export_loop("leg_circ", ring_from_loop(thigh_profile[leg_idx][1]))
+crotch_z_guess = hip_pos[2] - 0.03
+for dz in np.arange(0.0, 0.15, 0.005):
+    z = crotch_z_guess - dz
+    sec = mesh.section(plane_origin=[0, 0, z], plane_normal=[0, 0, 1])
+    if sec is not None and len(sec.discrete) >= 2:
+        loops_sorted = sorted(sec.discrete, key=lambda lp: -np.linalg.norm(np.diff(lp, axis=0), axis=1).sum())
+        if len(loops_sorted) >= 2:
+            p0 = np.linalg.norm(np.diff(loops_sorted[0], axis=0), axis=1).sum()
+            p1 = np.linalg.norm(np.diff(loops_sorted[1], axis=0), axis=1).sum()
+            if p1 > 0.1:
+                leg_circ_loop_for_render = loops_sorted[0] if p0 < p1 else loops_sorted[1]
+                manifest["leg_circ"], loop_lengths["leg_circ"] = export_loop(
+                    "leg_circ", ring_from_loop(leg_circ_loop_for_render))
+                break
 
-LEFT_FOREARM_POS = rest_bone_poses[0, 14, :3, 3].numpy()
-LEFT_HAND_POS = rest_bone_poses[0, 15, :3, 3].numpy()
+LEFT_FOREARM_POS = bone_pos("LeftForeArm")
+LEFT_HAND_POS = bone_pos("LeftHand")
 forearm_profile, forearm_ts = limb_profile(LEFT_FOREARM_POS, LEFT_HAND_POS, 40, 0.05)
 forearm_perims = np.array([p for p, _ in forearm_profile])
 distal = forearm_ts > 0.66
 cand = np.where(distal & ~np.isnan(forearm_perims))[0]
 wrist_idx = cand[np.nanargmin(forearm_perims[cand])]
-manifest["wrist"] = export_loop("wrist", ring_from_loop(forearm_profile[wrist_idx][1]))
+wrist_loop = forearm_profile[wrist_idx][1]
+# wrist is tape-measurable (wrapped around the wrist) -- real Delaunay
+# loop, not the straight edge-loop-length approximation used 2026-11-08
+# before this correction.
+manifest["wrist"], loop_lengths["wrist"] = export_loop("wrist", ring_from_loop(wrist_loop))
 
-# open-path fields
+# open-path fields (real surface geodesics)
 v_shoulder = nearest_vertex(bone_pos("LeftArm"))
 v_wrist = nearest_vertex(LEFT_HAND_POS)
-manifest["arm_length"] = export_path("arm_length", v_shoulder, v_wrist)
-
-v_lsh, v_rsh = nearest_vertex(bone_pos("LeftArm")), nearest_vertex(bone_pos("RightArm"))
-manifest["shoulder_w"] = export_path("shoulder_w", v_lsh, v_rsh)
-
-neck_z = (bone_pos("Neck1")[2] + bone_pos("Neck2")[2]) / 2
-neck_loop = section_loop([0, 0, neck_z], [0, 0, 1], [0, 0, neck_z])
-if neck_loop is not None:
-    nl, nr = leftmost_rightmost(neck_loop)
-    manifest["neck_w"] = export_path("neck_w", nearest_vertex(nl), nearest_vertex(nr))
+manifest["arm_length"], arm_length_cm = export_path("arm_length", v_shoulder, v_wrist)
 
 bust_loop = section_loop([0, 0, torso_heights["bust"]], [0, 0, 1], [0, 0, torso_heights["bust"]])
 waist_loop = section_loop([0, 0, torso_heights["waist"]], [0, 0, 1], [0, 0, torso_heights["waist"]])
 hips_loop = section_loop([0, 0, torso_heights["hips"]], [0, 0, 1], [0, 0, torso_heights["hips"]])
 
 bl_back, br_back = back_side_leftmost_rightmost(bust_loop)
-manifest["back_width"] = export_path("back_width", nearest_vertex(bl_back), nearest_vertex(br_back))
+manifest["back_width"], back_width_cm = export_path("back_width", nearest_vertex(bl_back), nearest_vertex(br_back))
 wl_back, wr_back = back_side_leftmost_rightmost(waist_loop)
-manifest["waist_back_width"] = export_path("waist_back_width", nearest_vertex(wl_back), nearest_vertex(wr_back))
+manifest["waist_back_width"], waist_back_width_cm = export_path(
+    "waist_back_width", nearest_vertex(wl_back), nearest_vertex(wr_back))
 hl_back, hr_back = back_side_leftmost_rightmost(hips_loop)
-manifest["hip_back_width"] = export_path("hip_back_width", nearest_vertex(hl_back), nearest_vertex(hr_back))
+manifest["hip_back_width"], hip_back_width_cm = export_path(
+    "hip_back_width", nearest_vertex(hl_back), nearest_vertex(hr_back))
 
+# shoulder_w, armscye_depth, bust_points, bum_points: REVERTED 2026-11-08
+# (iFire: "you must use geodesic for the ones that seem like tape
+# masurable") -- a real tailor runs the tape ALONG the body surface for
+# every one of these (shoulder-to-shoulder over the trapezius, shoulder
+# point down the front to the bust line, nipple-to-nipple across the
+# chest, hip-point-to-hip-point across the belly), so they go back to
+# the real flip_geodesics surface geodesic, not the published
+# reference's literal Euclidean chord -- a deliberate, stated deviation
+# from mbotsch/GarmentMeasurements for ones a physical tape would never
+# take as a straight line through the air. See CHANGELOG.md.
 bl_bust, br_bust = leftmost_rightmost(bust_loop)
-manifest["armscye_depth"] = export_path("armscye_depth", nearest_vertex(bone_pos("LeftShoulder")),
-                                         nearest_vertex(bl_bust))
-manifest["bust_points"] = export_path("bust_points", nearest_vertex(bl_bust), nearest_vertex(br_bust))
 bl_hip, br_hip = leftmost_rightmost(hips_loop)
-manifest["bum_points"] = export_path("bum_points", nearest_vertex(bl_hip), nearest_vertex(br_hip))
+manifest["shoulder_w"], shoulder_w_cm = export_path(
+    "shoulder_w", nearest_vertex(bone_pos("LeftArm")), nearest_vertex(bone_pos("RightArm")))
+manifest["armscye_depth"], armscye_depth_cm = export_path(
+    "armscye_depth", nearest_vertex(bone_pos("LeftShoulder")), nearest_vertex(bl_bust))
+manifest["bust_points"], bust_points_cm = export_path(
+    "bust_points", nearest_vertex(bl_bust), nearest_vertex(br_bust))
+manifest["bum_points"], bum_points_cm = export_path(
+    "bum_points", nearest_vertex(bl_hip), nearest_vertex(br_hip))
+
+# neck_w: also tape-measurable (wrapped around the neck) -- real
+# Delaunay loop, not the straight edge-loop-length approximation.
+neck_z = (bone_pos("Neck1")[2] + bone_pos("Neck2")[2]) / 2
+neck_loop = section_loop([0, 0, neck_z], [0, 0, 1], [0, 0, neck_z])
+neck_w_cm = None
+if neck_loop is not None:
+    manifest["neck_w"], neck_w_cm = export_loop("neck_w", ring_from_loop(neck_loop))
 
 with open(OUT_DIR / "paths_manifest.json", "w") as f:
     json.dump(manifest, f, indent=2)
 print("wrote", OUT_DIR / "paths_manifest.json")
 
-# --- real angle/derived fields from the bone skeleton's own rotations ---
-def bone_up_axis_angle_from_vertical(rot):
-    """Angle (deg) between the bone's local Y axis (rotated into world by
-    `rot`) and world-up (Z): 0 = bone points straight up, 90 = horizontal."""
-    local_up = np.array([0.0, 1.0, 0.0])
-    world_dir = rot @ local_up
-    world_dir = world_dir / (np.linalg.norm(world_dir) + 1e-12)
-    cos_a = np.clip(np.dot(world_dir, [0, 0, 1]), -1, 1)
-    return float(np.degrees(np.arccos(cos_a)))
+# head_l CORRECTED 2026-11-08: nape-of-neck landmark to crown (the
+# reference's measure_head_l), not jaw-to-crown. Not tape-measurable in
+# the draped-surface sense (a tailor's height-style measurements are
+# taken with a straight rule/stadiometer, not a flexible tape along the
+# scalp) -- kept as a real axis extent.
+head_top_z = bone_pos("HeadEnd")[2]
+head_l_cm = abs(head_top_z - neck_z) * M_TO_CM
 
+vert_bust_line_cm = abs(neck_z - torso_heights["bust"]) * M_TO_CM
 
-shoulder_rot = bone_rot("LeftShoulder")
-shoulder_incl = bone_up_axis_angle_from_vertical(shoulder_rot)
+# --- angle fields: the EXACT published angle_plane_vec formula ---
+neck_pos = (bone_pos("Neck1") + bone_pos("Neck2")) / 2
+shoulder_pos = bone_pos("LeftArm")
+hips_side_right = rightmost(hips_loop)
+waist_side_right = rightmost(waist_loop)
 
-hips_rot = bone_rot("Hips")
-hip_inclination = bone_up_axis_angle_from_vertical(hips_rot)
-
-arm_rot = bone_rot("LeftArm")
-# angle between the upper-arm bone direction and the torso's own down
-# axis (Chest->Hips) -- "how far the arm is abducted from resting
-# alongside the torso", the rest-pose arm_pose_angle.
-torso_axis = bone_pos("Hips") - bone_pos("Chest")
-torso_axis = torso_axis / np.linalg.norm(torso_axis)
-arm_dir = arm_rot @ np.array([0.0, 1.0, 0.0])
-arm_dir = arm_dir / (np.linalg.norm(arm_dir) + 1e-12)
-cos_a = np.clip(np.dot(arm_dir, torso_axis), -1, 1)
-arm_pose_angle = float(np.degrees(np.arccos(cos_a)))
+# their Y-up -> ANNY Z-up axis mapping, matching this pipeline's own
+# existing convention (Y_theirs=ANNY Z vertical, X_theirs=ANNY X lateral)
+shoulder_incl = angle_plane_vec(np.array([0.0, 0.0, -1.0]), shoulder_pos - neck_pos)
+hip_inclination = angle_plane_vec(np.array([1.0, 0.0, 0.0]), waist_side_right - hips_side_right)
+arm_pose_angle = angle_plane_vec(np.array([0.0, 0.0, -1.0]), LEFT_HAND_POS - shoulder_pos)
 
 # crotch_hip_diff: crotch height (LeftLeg/RightLeg bone midpoint z) vs
-# hips ring height, both real.
-right_leg_pos = rest_bone_poses[0, 73, :3, 3].numpy()
+# hips ring height, both real -- LandmarkDistanceAxisAligned, unaffected
+# by this correction pass.
+right_leg_pos = bone_pos("RightLeg")
 crotch_z = (bone_pos("LeftLeg")[2] + right_leg_pos[2]) / 2
 crotch_hip_diff_cm = abs(crotch_z - torso_heights["hips"]) * M_TO_CM
 
-angle_results = {
-    "shoulder_incl_deg": round(shoulder_incl, 2),
-    "hip_inclination_deg": round(hip_inclination, 2),
-    "arm_pose_angle_deg": round(arm_pose_angle, 2),
-    "crotch_hip_diff_cm": round(crotch_hip_diff_cm, 2),
+
+def _rnd(x):
+    return round(x, 2) if x is not None else None
+
+
+results = {
+    "shoulder_w_cm": _rnd(shoulder_w_cm),
+    "neck_w_cm": _rnd(neck_w_cm),
+    "wrist_cm": _rnd(loop_lengths.get("wrist")),
+    "leg_circ_cm": _rnd(loop_lengths.get("leg_circ")),
+    "armscye_depth_cm": _rnd(armscye_depth_cm),
+    "bust_points_cm": _rnd(bust_points_cm),
+    "bum_points_cm": _rnd(bum_points_cm),
+    "head_l_cm": _rnd(head_l_cm),
+    "vert_bust_line_cm": _rnd(vert_bust_line_cm),
+    "shoulder_incl_deg": _rnd(shoulder_incl),
+    "hip_inclination_deg": _rnd(hip_inclination),
+    "arm_pose_angle_deg": _rnd(arm_pose_angle),
+    "crotch_hip_diff_cm": _rnd(crotch_hip_diff_cm),
+    "arm_length_cm": _rnd(arm_length_cm),
+    "back_width_cm": _rnd(back_width_cm),
+    "waist_back_width_cm": _rnd(waist_back_width_cm),
+    "hip_back_width_cm": _rnd(hip_back_width_cm),
+    "waist_cm": _rnd(loop_lengths.get("waist")),
+    "bust_cm": _rnd(loop_lengths.get("bust")),
+    "hips_cm": _rnd(loop_lengths.get("hips")),
+    "underbust_cm": _rnd(loop_lengths.get("underbust")),
 }
-print(angle_results)
+print(results)
 with open(OUT_DIR / "angle_fields.json", "w") as f:
-    json.dump(angle_results, f, indent=2)
+    json.dump(results, f, indent=2)

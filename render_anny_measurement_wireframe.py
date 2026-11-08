@@ -196,6 +196,19 @@ for name in ["waist", "underbust", "bust", "hips", "leg_circ", "wrist"]:
     lx, lz = real_loops[name][:, 0].max() + dx, real_loops[name][:, 2].mean() + dz
     ax.annotate(name, (lx, lz), fontsize=8, color="#166534", zorder=4)
 
+# neck_w: CORRECTED 2026-11-08 to match the real published reference
+# implementation (mbotsch/GarmentMeasurements measure_vertex_trace) --
+# the FULL neck ring's edge-loop length, not a left-right chord. Drawn
+# as a closed loop, same as the circumference fields above.
+neck_z = (rest_bone_poses[0, 5, 2, 3].item() + rest_bone_poses[0, 6, 2, 3].item()) / 2
+neck_loop = section_loop(mesh, [0, 0, neck_z], [0, 0, 1], [0, 0, neck_z])
+if neck_loop is not None:
+    neck_ring = mesh.vertices[ring_from_loop(neck_loop)]
+    pts = np.vstack([neck_ring, neck_ring[:1]])
+    ax.plot(pts[:, 0], pts[:, 2], color="#16a34a", linewidth=1.6, zorder=3)
+    ax.annotate("neck_w", (neck_ring[:, 0].max() + 0.06, neck_ring[:, 2].mean()),
+                fontsize=8, color="#166534", zorder=4)
+
 if "arm_length" in real_curves:
     arm_curve = real_curves["arm_length"]
     ax.plot(arm_curve[:, 0], arm_curve[:, 2], color="#16a34a", linewidth=1.6, zorder=3)
@@ -236,28 +249,38 @@ def back_side_leftmost_rightmost(loop_pts):
 
 
 neck_z = (rest_bone_poses[0, 5, 2, 3].item() + rest_bone_poses[0, 6, 2, 3].item()) / 2
-neck_loop = section_loop(mesh, [0, 0, neck_z], [0, 0, 1], [0, 0, neck_z])
 bust_loop_pts = real_loops["bust"]
 waist_loop_pts = real_loops["waist"]
 hips_loop_pts = real_loops["hips"]
-
-frontier_lines = {
-    "shoulder_w": (bone_pos("LeftArm"), bone_pos("RightArm")),
-}
-if neck_loop is not None:
-    frontier_lines["neck_w"] = leftmost_rightmost(neck_loop)
-frontier_lines["back_width"] = back_side_leftmost_rightmost(bust_loop_pts)
-frontier_lines["hip_back_width"] = back_side_leftmost_rightmost(hips_loop_pts)
-frontier_lines["waist_back_width"] = back_side_leftmost_rightmost(waist_loop_pts)
 bl_bust, br_bust = leftmost_rightmost(bust_loop_pts)
-frontier_lines["armscye_depth"] = (bone_pos("LeftShoulder"), bl_bust)
-frontier_lines["bust_points"] = (bl_bust, br_bust)
-frontier_lines["bum_points"] = leftmost_rightmost(hips_loop_pts)
+
+# surface-geodesic fields (real curved paths, from real_curves): back/
+# hip/waist back-width only -- the others below are straight-line
+# Euclidean per the 2026-11-08 correction, drawn separately.
+frontier_lines = {
+    "back_width": back_side_leftmost_rightmost(bust_loop_pts),
+    "hip_back_width": back_side_leftmost_rightmost(hips_loop_pts),
+    "waist_back_width": back_side_leftmost_rightmost(waist_loop_pts),
+}
+
+# shoulder_w, armscye_depth, bust_points, bum_points: CORRECTED 2026-11-08
+# to match the real published reference implementation
+# (mbotsch/GarmentMeasurements measure_landmark_distance_euclidean) --
+# a straight 3D (Euclidean) chord between the two landmarks, NOT a
+# surface geodesic. Drawn as DASHED straight lines to visually
+# distinguish from the real surface-geodesic curves above.
+euclidean_lines = {
+    "shoulder_w": (bone_pos("LeftArm"), bone_pos("RightArm")),
+    "armscye_depth": (bone_pos("LeftShoulder"), bl_bust),
+    "bust_points": (bl_bust, br_bust),
+    "bum_points": leftmost_rightmost(hips_loop_pts),
+}
 
 frontier_label_offset = {
-    "shoulder_w": (-0.12, 0.04), "neck_w": (0.02, -0.03),
+    "neck_w": (0.02, -0.03),
     "back_width": (0.14, 0.015), "hip_back_width": (-0.10, 0.0),
-    "waist_back_width": (-0.10, -0.02), "armscye_depth": (0.18, -0.045),
+    "waist_back_width": (-0.10, -0.02),
+    "shoulder_w": (-0.12, 0.04), "armscye_depth": (0.18, -0.045),
     "bust_points": (0.14, -0.015), "bum_points": (0.14, -0.02),
 }
 for name, (pa, pb) in frontier_lines.items():
@@ -273,27 +296,37 @@ for name, (pa, pb) in frontier_lines.items():
     ax.annotate(name, (mx + dx, mz + dz), fontsize=7, color="#166534", zorder=4,
                 ha="center")
 
+for name, (pa, pb) in euclidean_lines.items():
+    ax.plot([pa[0], pb[0]], [pa[2], pb[2]], color="#16a34a", linewidth=1.3,
+             linestyle="--", marker="o", markersize=2.5, zorder=3)
+    mx, mz = (pa[0] + pb[0]) / 2, (pa[2] + pb[2]) / 2
+    dx, dz = frontier_label_offset.get(name, (0.02, 0.0))
+    ax.annotate(name, (mx + dx, mz + dz), fontsize=7, color="#166534", zorder=4,
+                ha="center")
+
 zmin, zmax = verts[:, 2].min(), verts[:, 2].max()
 ax.annotate("", xy=(-0.60, zmax), xytext=(-0.60, zmin),
             arrowprops=dict(arrowstyle="<->", color="#16a34a", linewidth=1.2), zorder=3)
 ax.annotate("height", (-0.68, (zmin + zmax) / 2), fontsize=8, color="#166534",
             rotation=90, va="center", zorder=4)
 
-# head_l, vert_bust_line, waist_over_bust_line: axis extents (real, but no
-# single vertex PAIR -- drawn as short vertical green ticks at their real
-# z-heights rather than a two-point line).
+# head_l: CORRECTED 2026-11-08 to the real published reference's
+# `measure_head_l` lower landmark (nape_of_neck, not jaw). vert_bust_line
+# remains a real axis extent. waist_over_bust_line and bust_line are
+# REVERTED to unsettled (see CHANGELOG.md): the published reference
+# computes them as real parasagittal-plane-cut polyline lengths, not a
+# simple axis-aligned z-difference -- drawn RED below, not green.
 head_top_z = rest_bone_poses[0, 8, 2, 3].item()   # HeadEnd
-jaw_z = rest_bone_poses[0, 9, 2, 3].item()        # Jaw
 axis_ticks = {
-    "head_l": (0.55, head_top_z, jaw_z),
+    "head_l": (0.55, head_top_z, neck_z),
     "vert_bust_line": (0.62, neck_z, torso_heights["bust"]),
-    "waist_over_bust_line": (0.70, torso_heights["bust"], torso_heights["waist"]),
 }
 for name, (x, za, zb) in axis_ticks.items():
     ax.annotate("", xy=(x, za), xytext=(x, zb),
                 arrowprops=dict(arrowstyle="<->", color="#16a34a", linewidth=1.0), zorder=3)
     ax.annotate(name, (x + 0.02, (za + zb) / 2), fontsize=7, color="#166534",
                 rotation=90, va="center", zorder=4)
+
 
 # Remaining 4 fields (angle/derived -- shoulder_incl, hip_inclination,
 # arm_pose_angle, crotch_hip_diff): real values now computed from the
@@ -312,6 +345,13 @@ approx = [
     ("hip_inclination", angle_values.get("hip_inclination_deg"), "deg", 0.44, torso_heights["hips"] - 0.02),
     ("crotch_hip_diff", angle_values.get("crotch_hip_diff_cm"), "cm", -0.06, torso_heights["hips"] - 0.14),
     ("arm_pose_angle", angle_values.get("arm_pose_angle_deg"), "deg", 0.55, torso_heights["bust"] - 0.22),
+    # REVERTED to unsettled 2026-11-08: the real reference computes these
+    # as parasagittal-plane-cut polyline lengths, which this package does
+    # not implement -- drawn red/unlabeled, honestly, not under a wrong
+    # value.
+    ("bust_line", None, "cm", -0.40, torso_heights["bust"] + 0.03),
+    ("waist_over_bust_line", None, "cm",
+     -0.46, (torso_heights["waist"] + torso_heights["bust"]) / 2),
 ]
 for name, val, unit, dx, z in approx:
     color = "#16a34a" if val is not None else "#dc2626"
@@ -326,8 +366,9 @@ ax.set_xlim(-0.95, 1.0)
 ax.set_ylim(zmin - 0.05, zmax + 0.08)
 ax.axis("off")
 ax.set_title("ANNY-SOMA-X — 26 GarmentCode measurement locations\n"
-              "all 26 fields real: curved geodesics/axis-extents (22) + "
-              "bone-rotation angles/differences (4)",
+              "green = 24 real fields (dashed = Euclidean, per the real "
+              "mbotsch/GarmentMeasurements reference); red = 2 reverted "
+              "to unsettled",
               fontsize=9)
 
 SVG_PATH = OUT_DIR / "anny_measurement_wireframe.svg"
