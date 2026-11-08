@@ -179,14 +179,26 @@ manifest = {}
 # the dense, continuous mesh-PLANE intersection (mesh.section's direct
 # output, real geometry, not snapped to sparse mesh vertices) used only
 # for drawing. The real measured circumference stays the flip_geodesics
-# Delaunay-tightened length in loop_lengths/manifest below; that export
-# routes between a handful of SNAPPED ring vertices via Dijkstra
-# shortest mesh-edge paths, which legitimately wobble off the cutting
-# plane by a few mm between consecutive vertices (real surface
-# topology, not a bug) and renders as a jagged sawtooth at diagram
-# scale -- iFire: "why is the diagram jagged". The dense plane-cut is
-# smooth because it is a true planar cross-section, not a vertex-to-
-# vertex shortest path.
+# Delaunay-tightened length in loop_lengths/manifest below.
+#
+# Why the geodesic export's polyline is jagged (iFire: "why is the
+# diagram jagged", then the precise mechanism: "for the spherical
+# topological problem you treat the loop as partial segments that are
+# too short to go the long way"): `--measure-loop` treats a closed ring
+# as a SEQUENCE OF INDEPENDENT point-to-point shortest paths between
+# consecutive snapped ring vertices. Each segment is short, and
+# Dijkstra over the mesh's genuinely sphere-topology surface has no
+# constraint to stay near the cutting plane or go "the long way" around
+# the loop -- a segment is free to take the globally shortest route
+# between its two endpoints, which near a surface fold (underarm, inner
+# thigh, waist crease) can cut to the OTHER side of the fold rather
+# than hug the plane, because that route is shorter in isolation.
+# Stitching independently-shortest segments back into one "loop"
+# produces the sawtooth: each segment is locally correct, but segments
+# disagree on which side of a fold to run. Real topological ambiguity
+# in the segment-by-segment construction, not a measurement error --
+# the dense plane-cut below is immune to it by construction (a single,
+# globally plane-constrained cut, no independent per-segment freedom).
 render_manifest = {}
 
 
