@@ -121,33 +121,31 @@ def export_path(name, a, b):
 
 
 def export_loop(name, ring):
-    """Real closed geodesic loop. Uses the NEW --measure-loop-bounded-shorten
+    """Real closed geodesic loop. Uses --measure-loop-adaptive-shorten
     (geodesic-probe, added 2026-11-08: iFire "please use the tool for
     geodesic paths pls and fix it" -- the raw piecewise-Dijkstra
     construction has sharp per-vertex kinks, up to 60deg turning angle,
     genuinely present in 3D, not a 2D-projection artifact; verified by
     computing turning angles along the exported polyline directly).
-    maxIterations=200, maxRelativeLengthDecrease=0.10 (the tool's own
-    corrected-semantics default: a genuine cap on TOTAL decrease, after
-    finding and fixing a real bug where the underlying
-    geometry-central parameter means "stop once BELOW this fraction of
-    the original length", the OPPOSITE of its apparent meaning -- see
-    geodesic-probe's own fix commit for the hips-loop counterexample
-    that exposed it: 94.9cm sliding to 62.47cm, the SAME collapse-
-    toward-a-narrower-cross-section failure the tool's module comment
-    already warns about for unbounded shortening, just gradual. A
-    tighter 5% cap left several loops (bust, neck_w) with many sharp
-    kinks still unresolved (mean turning angle still 20-29deg) since
-    most loops only get 3-6 iterations before hitting a 5% budget --
-    10% is the measured sweet spot: hips/bust/underbust/wrist/neck_w
-    all converge to mean turning angles under 10-12deg, well clear of
-    the demonstrated danger zone (hips started visibly sliding past a
-    ~30% decrease). hips alone keeps 1-2 persistently sharp turns
-    (~60-90deg) even at this safe setting -- a genuine feature of that
-    loop's real geometry near the inner-thigh fold, not something more
-    iterations within the safe range resolve; documented, not hidden).
-    Returns (bounded-smooth polyline path, BOUNDED_SHORTEN_LENGTH cm) --
-    this REPLACES DELAUNAY_LENGTH as the authoritative circumference:
+
+    An earlier version of this function used a FIXED
+    --measure-loop-bounded-shorten budget (200 iterations, 10% max
+    length decrease) empirically tuned against THIS ONE mesh's loop
+    sizes. iFire: "it has to work for possible anny and custom models
+    so you can't hard code" -- correct: that fixed budget has no
+    principled basis for a different ANNY phenotype or a wholly custom
+    model (a smaller/coarser mesh could still be jagged at that
+    iteration count, or could already be sliding toward collapse
+    before reaching it). --measure-loop-adaptive-shorten instead stops
+    on a real geometric criterion (the loop's max turning angle,
+    target 25deg -- a visibly sharp kink vs. a smooth curve means the
+    same thing on any mesh at any scale) with mesh-independent SAFETY
+    nets only (2000 iterations, 30% max length decrease -- generous
+    enough to never be the thing that decides "done" on a reasonably-
+    posed loop, catching only genuine runaway/collapse).
+
+    Returns (adaptive-smooth polyline path, ADAPTIVE_SHORTEN_LENGTH cm)
+    -- this REPLACES DELAUNAY_LENGTH as the authoritative circumference:
     the tool's own comment notes DELAUNAY_LENGTH is "likely slightly
     LONGER than the true taut-tape-measure geodesic circumference" since
     it never actually shortens, only retriangulates."""
@@ -155,18 +153,19 @@ def export_loop(name, ring):
     arg = ",".join(str(v) for v in ring)
     r = subprocess.run(
         [FLIP_GEODESICS, str(OBJ_PATH), f"--measure-loop={arg}", "--units-scale=1",
-         "--measure-loop-bounded-shorten=200", "--measure-loop-bounded-shorten-rel-decrease=0.10",
+         "--measure-loop-adaptive-shorten=25",
          f"--export-path={out_json}"],
         capture_output=True, text=True, timeout=30,
     )
     lines = r.stdout.strip().splitlines()
-    print(name, "loop", len(ring), "verts ->", lines)
-    bounded_len = None
+    note_lines = [l for l in r.stderr.strip().splitlines() if l.startswith("NOTE")]
+    print(name, "loop", len(ring), "verts ->", lines, note_lines)
+    adaptive_len = None
     for line in lines:
-        if line.startswith("BOUNDED_SHORTEN_LENGTH"):
-            bounded_len = float(line.split()[1]) * M_TO_CM
-    bounded_json = out_json.with_name(out_json.stem + "_bounded" + out_json.suffix)
-    return str(bounded_json if bounded_json.exists() else out_json), bounded_len
+        if line.startswith("ADAPTIVE_SHORTEN_LENGTH"):
+            adaptive_len = float(line.split()[1]) * M_TO_CM
+    adaptive_json = out_json.with_name(out_json.stem + "_adaptive" + out_json.suffix)
+    return str(adaptive_json if adaptive_json.exists() else out_json), adaptive_len
 
 
 BONE = {"LeftArm": 13, "RightArm": 41, "LeftShoulder": 12, "RightShoulder": 40,
