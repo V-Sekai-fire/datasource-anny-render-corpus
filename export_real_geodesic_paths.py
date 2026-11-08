@@ -175,6 +175,27 @@ torso_heights = {"waist": z_scan[waist_idx], "hips": z_scan[hips_idx],
                   "bust": z_scan[bust_idx], "underbust": z_scan[underbust_idx]}
 
 manifest = {}
+# render_manifest: a SEPARATE, visual-only polyline per closed loop --
+# the dense, continuous mesh-PLANE intersection (mesh.section's direct
+# output, real geometry, not snapped to sparse mesh vertices) used only
+# for drawing. The real measured circumference stays the flip_geodesics
+# Delaunay-tightened length in loop_lengths/manifest below; that export
+# routes between a handful of SNAPPED ring vertices via Dijkstra
+# shortest mesh-edge paths, which legitimately wobble off the cutting
+# plane by a few mm between consecutive vertices (real surface
+# topology, not a bug) and renders as a jagged sawtooth at diagram
+# scale -- iFire: "why is the diagram jagged". The dense plane-cut is
+# smooth because it is a true planar cross-section, not a vertex-to-
+# vertex shortest path.
+render_manifest = {}
+
+
+def export_render_loop(name, loop_pts):
+    out_json = PATHS_DIR / f"{name}_render.json"
+    with open(out_json, "w") as f:
+        json.dump([loop_pts.tolist()], f)
+    return str(out_json)
+
 
 # circumference loops (real flip_geodesics loops; these are the classic
 # tape-measurable circumferences -- a tape physically wrapped around the
@@ -186,6 +207,7 @@ for name, z in torso_heights.items():
     if lp is not None:
         ring = ring_from_loop(lp)
         manifest[name], loop_lengths[name] = export_loop(name, ring)
+        render_manifest[name] = export_render_loop(name, lp)
 
 
 def limb_profile(head_pos, tail_pos, n, margin):
@@ -226,6 +248,7 @@ for dz in np.arange(0.0, 0.15, 0.005):
                 leg_circ_loop_for_render = loops_sorted[0] if p0 < p1 else loops_sorted[1]
                 manifest["leg_circ"], loop_lengths["leg_circ"] = export_loop(
                     "leg_circ", ring_from_loop(leg_circ_loop_for_render))
+                render_manifest["leg_circ"] = export_render_loop("leg_circ", leg_circ_loop_for_render)
                 break
 
 LEFT_FOREARM_POS = bone_pos("LeftForeArm")
@@ -240,6 +263,7 @@ wrist_loop = forearm_profile[wrist_idx][1]
 # loop, not the straight edge-loop-length approximation used 2026-11-08
 # before this correction.
 manifest["wrist"], loop_lengths["wrist"] = export_loop("wrist", ring_from_loop(wrist_loop))
+render_manifest["wrist"] = export_render_loop("wrist", wrist_loop)
 
 # open-path fields (real surface geodesics)
 v_shoulder = nearest_vertex(bone_pos("LeftArm"))
@@ -287,10 +311,15 @@ neck_loop = section_loop([0, 0, neck_z], [0, 0, 1], [0, 0, neck_z])
 neck_w_cm = None
 if neck_loop is not None:
     manifest["neck_w"], neck_w_cm = export_loop("neck_w", ring_from_loop(neck_loop))
+    render_manifest["neck_w"] = export_render_loop("neck_w", neck_loop)
 
 with open(OUT_DIR / "paths_manifest.json", "w") as f:
     json.dump(manifest, f, indent=2)
 print("wrote", OUT_DIR / "paths_manifest.json")
+
+with open(OUT_DIR / "render_manifest.json", "w") as f:
+    json.dump(render_manifest, f, indent=2)
+print("wrote", OUT_DIR / "render_manifest.json")
 
 # head_l CORRECTED 2026-11-08: nape-of-neck landmark to crown (the
 # reference's measure_head_l), not jaw-to-crown. Not tape-measurable in
