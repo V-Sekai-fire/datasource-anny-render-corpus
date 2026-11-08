@@ -121,20 +121,52 @@ def export_path(name, a, b):
 
 
 def export_loop(name, ring):
+    """Real closed geodesic loop. Uses the NEW --measure-loop-bounded-shorten
+    (geodesic-probe, added 2026-11-08: iFire "please use the tool for
+    geodesic paths pls and fix it" -- the raw piecewise-Dijkstra
+    construction has sharp per-vertex kinks, up to 60deg turning angle,
+    genuinely present in 3D, not a 2D-projection artifact; verified by
+    computing turning angles along the exported polyline directly).
+    maxIterations=200, maxRelativeLengthDecrease=0.10 (the tool's own
+    corrected-semantics default: a genuine cap on TOTAL decrease, after
+    finding and fixing a real bug where the underlying
+    geometry-central parameter means "stop once BELOW this fraction of
+    the original length", the OPPOSITE of its apparent meaning -- see
+    geodesic-probe's own fix commit for the hips-loop counterexample
+    that exposed it: 94.9cm sliding to 62.47cm, the SAME collapse-
+    toward-a-narrower-cross-section failure the tool's module comment
+    already warns about for unbounded shortening, just gradual. A
+    tighter 5% cap left several loops (bust, neck_w) with many sharp
+    kinks still unresolved (mean turning angle still 20-29deg) since
+    most loops only get 3-6 iterations before hitting a 5% budget --
+    10% is the measured sweet spot: hips/bust/underbust/wrist/neck_w
+    all converge to mean turning angles under 10-12deg, well clear of
+    the demonstrated danger zone (hips started visibly sliding past a
+    ~30% decrease). hips alone keeps 1-2 persistently sharp turns
+    (~60-90deg) even at this safe setting -- a genuine feature of that
+    loop's real geometry near the inner-thigh fold, not something more
+    iterations within the safe range resolve; documented, not hidden).
+    Returns (bounded-smooth polyline path, BOUNDED_SHORTEN_LENGTH cm) --
+    this REPLACES DELAUNAY_LENGTH as the authoritative circumference:
+    the tool's own comment notes DELAUNAY_LENGTH is "likely slightly
+    LONGER than the true taut-tape-measure geodesic circumference" since
+    it never actually shortens, only retriangulates."""
     out_json = PATHS_DIR / f"{name}.json"
     arg = ",".join(str(v) for v in ring)
     r = subprocess.run(
         [FLIP_GEODESICS, str(OBJ_PATH), f"--measure-loop={arg}", "--units-scale=1",
+         "--measure-loop-bounded-shorten=200", "--measure-loop-bounded-shorten-rel-decrease=0.10",
          f"--export-path={out_json}"],
         capture_output=True, text=True, timeout=30,
     )
     lines = r.stdout.strip().splitlines()
-    print(name, "loop", len(ring), "verts ->", lines[:2])
-    delaunay_len = None
+    print(name, "loop", len(ring), "verts ->", lines)
+    bounded_len = None
     for line in lines:
-        if line.startswith("DELAUNAY_LENGTH"):
-            delaunay_len = float(line.split()[1]) * M_TO_CM
-    return str(out_json), delaunay_len
+        if line.startswith("BOUNDED_SHORTEN_LENGTH"):
+            bounded_len = float(line.split()[1]) * M_TO_CM
+    bounded_json = out_json.with_name(out_json.stem + "_bounded" + out_json.suffix)
+    return str(bounded_json if bounded_json.exists() else out_json), bounded_len
 
 
 BONE = {"LeftArm": 13, "RightArm": 41, "LeftShoulder": 12, "RightShoulder": 40,
@@ -175,51 +207,19 @@ torso_heights = {"waist": z_scan[waist_idx], "hips": z_scan[hips_idx],
                   "bust": z_scan[bust_idx], "underbust": z_scan[underbust_idx]}
 
 manifest = {}
-# render_manifest: a SEPARATE, visual-only polyline per closed loop --
-# the dense, continuous mesh-PLANE intersection (mesh.section's direct
-# output, real geometry, not snapped to sparse mesh vertices) used only
-# for drawing. The real measured circumference stays the flip_geodesics
-# Delaunay-tightened length in loop_lengths/manifest below.
-#
-# Why the geodesic export's polyline is jagged (iFire: "why is the
-# diagram jagged", then the precise mechanism: "for the spherical
-# topological problem you treat the loop as partial segments that are
-# too short to go the long way"): `--measure-loop` treats a closed ring
-# as a SEQUENCE OF INDEPENDENT point-to-point shortest paths between
-# consecutive snapped ring vertices. Each segment is short, and
-# Dijkstra over the mesh's genuinely sphere-topology surface has no
-# constraint to stay near the cutting plane or go "the long way" around
-# the loop -- a segment is free to take the globally shortest route
-# between its two endpoints, which near a surface fold (underarm, inner
-# thigh, waist crease) can cut to the OTHER side of the fold rather
-# than hug the plane, because that route is shorter in isolation.
-# Stitching independently-shortest segments back into one "loop"
-# produces the sawtooth: each segment is locally correct, but segments
-# disagree on which side of a fold to run. Real topological ambiguity
-# in the segment-by-segment construction, not a measurement error --
-# the dense plane-cut below is immune to it by construction (a single,
-# globally plane-constrained cut, no independent per-segment freedom).
-render_manifest = {}
-
-
-def export_render_loop(name, loop_pts):
-    out_json = PATHS_DIR / f"{name}_render.json"
-    with open(out_json, "w") as f:
-        json.dump([loop_pts.tolist()], f)
-    return str(out_json)
-
 
 # circumference loops (real flip_geodesics loops; these are the classic
 # tape-measurable circumferences -- a tape physically wrapped around the
-# body -- so they always use the real Delaunay-tightened geodesic loop,
-# never a straight-edge approximation)
+# body -- so they always use the real, now-safely-shortened geodesic
+# loop (see export_loop()'s docstring for the 2026-11-08 fix: a new
+# --measure-loop-bounded-shorten flag in geodesic-probe itself, not a
+# plane-cut rendering workaround), never a straight-edge approximation.
 loop_lengths = {}
 for name, z in torso_heights.items():
     lp = section_loop([0, 0, z], [0, 0, 1], [0, 0, z])
     if lp is not None:
         ring = ring_from_loop(lp)
         manifest[name], loop_lengths[name] = export_loop(name, ring)
-        render_manifest[name] = export_render_loop(name, lp)
 
 
 def limb_profile(head_pos, tail_pos, n, margin):
@@ -260,7 +260,6 @@ for dz in np.arange(0.0, 0.15, 0.005):
                 leg_circ_loop_for_render = loops_sorted[0] if p0 < p1 else loops_sorted[1]
                 manifest["leg_circ"], loop_lengths["leg_circ"] = export_loop(
                     "leg_circ", ring_from_loop(leg_circ_loop_for_render))
-                render_manifest["leg_circ"] = export_render_loop("leg_circ", leg_circ_loop_for_render)
                 break
 
 LEFT_FOREARM_POS = bone_pos("LeftForeArm")
@@ -275,7 +274,6 @@ wrist_loop = forearm_profile[wrist_idx][1]
 # loop, not the straight edge-loop-length approximation used 2026-11-08
 # before this correction.
 manifest["wrist"], loop_lengths["wrist"] = export_loop("wrist", ring_from_loop(wrist_loop))
-render_manifest["wrist"] = export_render_loop("wrist", wrist_loop)
 
 # open-path fields (real surface geodesics)
 v_shoulder = nearest_vertex(bone_pos("LeftArm"))
@@ -323,15 +321,10 @@ neck_loop = section_loop([0, 0, neck_z], [0, 0, 1], [0, 0, neck_z])
 neck_w_cm = None
 if neck_loop is not None:
     manifest["neck_w"], neck_w_cm = export_loop("neck_w", ring_from_loop(neck_loop))
-    render_manifest["neck_w"] = export_render_loop("neck_w", neck_loop)
 
 with open(OUT_DIR / "paths_manifest.json", "w") as f:
     json.dump(manifest, f, indent=2)
 print("wrote", OUT_DIR / "paths_manifest.json")
-
-with open(OUT_DIR / "render_manifest.json", "w") as f:
-    json.dump(render_manifest, f, indent=2)
-print("wrote", OUT_DIR / "render_manifest.json")
 
 # head_l CORRECTED 2026-11-08: nape-of-neck landmark to crown (the
 # reference's measure_head_l), not jaw-to-crown. Not tape-measurable in
