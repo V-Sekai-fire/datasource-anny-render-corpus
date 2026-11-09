@@ -167,6 +167,13 @@ else:
 # --- render: front view, X (horizontal) vs Z (vertical, up) ---
 fig, ax = plt.subplots(figsize=(10, 10.5))
 
+# label_queue: every labeled anchor collected here instead of calling
+# ax.annotate() immediately, so ALL labels (circumference loops,
+# surface-geodesic/Euclidean fields, axis extents, angle markers) go
+# through ONE unified boundary-labeling pass at the end -- see
+# place_all_labels() below. Each entry: (text, x, z, line_color, text_color).
+label_queue = []
+
 # sampled wireframe: every 14th face's 3 edges, at low alpha, front-view
 # (keeps the SVG a few hundred KB instead of several MB so it stays quick
 # to view on GitHub, while still reading as a recognizable body wireframe)
@@ -178,13 +185,6 @@ for a, b, c in sample_faces:
         segs.append([(verts[i, 0], verts[i, 2]), (verts[j, 0], verts[j, 2])])
 ax.add_collection(LineCollection(segs, colors="#9ca3af", linewidths=0.3, alpha=0.5, zorder=1))
 
-circ_label_offset = {  # (dx beyond loop max-x, dz) -- hand-tuned so the four
-    # torso loops' labels (very close in height on this body: waist/underbust
-    # are only ~2mm apart) don't stack on top of each other.
-    "bust": (0.07, 0.025), "underbust": (0.14, -0.02),
-    "waist": (0.20, 0.0), "hips": (0.07, 0.0),
-    "leg_circ": (0.16, 0.0), "wrist": (0.09, -0.035),
-}
 for name in ["waist", "underbust", "bust", "hips", "leg_circ", "wrist"]:
     loop = real_curves[name] if name in real_curves else real_loops[name]
     if name in real_curves:
@@ -192,9 +192,8 @@ for name in ["waist", "underbust", "bust", "hips", "leg_circ", "wrist"]:
     else:
         pts = np.vstack([loop, loop[:1]])
     ax.plot(pts[:, 0], pts[:, 2], color="#16a34a", linewidth=1.6, zorder=3)
-    dx, dz = circ_label_offset[name]
-    lx, lz = real_loops[name][:, 0].max() + dx, real_loops[name][:, 2].mean() + dz
-    ax.annotate(name, (lx, lz), fontsize=8, color="#166534", zorder=4)
+    lx, lz = real_loops[name][:, 0].mean(), real_loops[name][:, 2].mean()
+    label_queue.append((name, lx, lz, "#16a34a", "#166534"))
 
 # neck_w: CORRECTED 2026-11-08 to match the real published reference
 # implementation (mbotsch/GarmentMeasurements measure_vertex_trace) --
@@ -206,8 +205,7 @@ if neck_loop is not None:
     neck_ring = mesh.vertices[ring_from_loop(neck_loop)]
     pts = np.vstack([neck_ring, neck_ring[:1]])
     ax.plot(pts[:, 0], pts[:, 2], color="#16a34a", linewidth=1.6, zorder=3)
-    ax.annotate("neck_w", (neck_ring[:, 0].max() + 0.06, neck_ring[:, 2].mean()),
-                fontsize=8, color="#166534", zorder=4)
+    label_queue.append(("neck_w", neck_ring[:, 0].mean(), neck_ring[:, 2].mean(), "#16a34a", "#166534"))
 
 if "arm_length" in real_curves:
     arm_curve = real_curves["arm_length"]
@@ -215,8 +213,7 @@ if "arm_length" in real_curves:
 else:
     ax.plot(arm_path[:, 0], arm_path[:, 2], color="#16a34a", linewidth=1.6, marker="o",
              markersize=3, zorder=3)
-ax.annotate("arm_length", (arm_path[0, 0] - 0.02, arm_path[0, 2] + 0.06),
-            fontsize=8, color="#166534", zorder=4, ha="right")
+label_queue.append(("arm_length", arm_path[:, 0].mean(), arm_path[:, 2].mean(), "#16a34a", "#166534"))
 
 # --- the 8 surface-distance fields resolved in the frontier-learning ---
 # --- iteration (CHANGELOG.md), real bone/ring-vertex pairs. ------------
@@ -276,13 +273,6 @@ euclidean_lines = {
     "bum_points": leftmost_rightmost(hips_loop_pts),
 }
 
-frontier_label_offset = {
-    "neck_w": (0.02, -0.03),
-    "back_width": (0.14, 0.015), "hip_back_width": (-0.10, 0.0),
-    "waist_back_width": (-0.10, -0.02),
-    "shoulder_w": (-0.12, 0.04), "armscye_depth": (0.18, -0.045),
-    "bust_points": (0.14, -0.015), "bum_points": (0.14, -0.02),
-}
 for name, (pa, pb) in frontier_lines.items():
     if name in real_curves:
         curve = real_curves[name]
@@ -292,17 +282,13 @@ for name, (pa, pb) in frontier_lines.items():
         ax.plot([pa[0], pb[0]], [pa[2], pb[2]], color="#16a34a", linewidth=1.3,
                  marker="o", markersize=2.5, zorder=3)
         mx, mz = (pa[0] + pb[0]) / 2, (pa[2] + pb[2]) / 2
-    dx, dz = frontier_label_offset.get(name, (0.02, 0.0))
-    ax.annotate(name, (mx + dx, mz + dz), fontsize=7, color="#166534", zorder=4,
-                ha="center")
+    label_queue.append((name, mx, mz, "#16a34a", "#166534"))
 
 for name, (pa, pb) in euclidean_lines.items():
     ax.plot([pa[0], pb[0]], [pa[2], pb[2]], color="#16a34a", linewidth=1.3,
              linestyle="--", marker="o", markersize=2.5, zorder=3)
     mx, mz = (pa[0] + pb[0]) / 2, (pa[2] + pb[2]) / 2
-    dx, dz = frontier_label_offset.get(name, (0.02, 0.0))
-    ax.annotate(name, (mx + dx, mz + dz), fontsize=7, color="#166534", zorder=4,
-                ha="center")
+    label_queue.append((name, mx, mz, "#16a34a", "#166534"))
 
 zmin, zmax = verts[:, 2].min(), verts[:, 2].max()
 ax.annotate("", xy=(-0.60, zmax), xytext=(-0.60, zmin),
@@ -324,8 +310,7 @@ axis_ticks = {
 for name, (x, za, zb) in axis_ticks.items():
     ax.annotate("", xy=(x, za), xytext=(x, zb),
                 arrowprops=dict(arrowstyle="<->", color="#16a34a", linewidth=1.0), zorder=3)
-    ax.annotate(name, (x + 0.02, (za + zb) / 2), fontsize=7, color="#166534",
-                rotation=90, va="center", zorder=4)
+    label_queue.append((name, x, (za + zb) / 2, "#16a34a", "#166534"))
 
 
 # Remaining 4 fields (angle/derived -- shoulder_incl, hip_inclination,
@@ -355,14 +340,86 @@ approx = [
 ]
 for name, val, unit, dx, z in approx:
     color = "#16a34a" if val is not None else "#dc2626"
+    text_color = "#166534" if val is not None else "#7f1d1d"
     label = f"{name}\n{val:.1f}{unit}" if val is not None else name
     ax.plot([dx], [z], marker="o", markersize=4, color=color, zorder=3)
-    ha = "left" if dx >= 0 else "right"
-    ax.annotate(label, (dx + (0.02 if dx >= 0 else -0.02), z), fontsize=7,
-                color=("#166534" if val is not None else "#7f1d1d"), zorder=4, ha=ha)
+    label_queue.append((label, dx, z, color, text_color))
+
+# ============ Bekos, Kaufmann, Symvonis & Wolff (2007) type-opo
+# boundary labeling: ONE combined left/right layout pass across every
+# queued anchor (circumference loops, surface-geodesic/Euclidean
+# fields, axis extents, angle markers), replacing the hand-tuned
+# per-field (dx, dz) offset dicts this file shipped with. iFire: "the
+# new one was wrong" (about the x-ray PNG pipeline's text-on-body
+# crowding) -- this SVG had the SAME underlying problem (e.g. "bust",
+# "armscye_depth", "bust_points" labels landing on top of each other
+# near the chest); the SAME validated algorithm from
+# sinew-mocap/measure's xray_oit_render.gd now applies here too. ============
+left_q = sorted([a for a in label_queue if a[1] < 0], key=lambda a: -a[2])   # top-to-bottom = descending z
+right_q = sorted([a for a in label_queue if a[1] >= 0], key=lambda a: -a[2])
+
+MARGIN_X_LEFT = -1.25
+MARGIN_X_RIGHT = 1.20
+MARGIN_Z_TOP = zmax - 0.05  # leave headroom below the title (fig.suptitle/ax.set_title)
+MARGIN_Z_BOTTOM = zmin + 0.05
+# Rails sit NEAR THE BODY (not near the margin): the vertical
+# height-adjusting segment happens close to the anchor, so the LONG
+# horizontal sweep out to the margin runs at each item's own TARGET
+# label_z (unique per item by construction) instead of its raw anchor
+# z. The earlier version put rails near the margin, making the FIRST
+# (long) segment run at the ANCHOR's raw z -- which, for a dense
+# layout, can graze close to a DIFFERENT item's label_z and visually
+# clip that item's text even though no two LEADERS actually crossed
+# each other. Flipping which segment is long fixes this: a long run at
+# a unique target z cannot intersect anyone else's text, because only
+# the item that OWNS that z has text there.
+INNER_RAIL_BASE_LEFT = -0.78
+INNER_RAIL_BASE_RIGHT = 0.78
+RAIL_MARGIN_BUFFER = 0.08  # rails must never reach margin_x (where text starts)
+
+
+def place_column(items, margin_x, rail_sign, inner_rail_base):
+    n = len(items)
+    if n == 0:
+        return
+    step = (MARGIN_Z_TOP - MARGIN_Z_BOTTOM) / max(1, n - 1) if n > 1 else 0.0
+    # Rail spacing SCALED to the actual item count: a fixed per-item
+    # increment (the earlier bug) grows unbounded and, past ~10 items,
+    # pushed later rails PAST margin_x -- putting their vertical
+    # height-adjusting segment literally inside the text column, where
+    # it crossed through neighboring items' labels. Capping the total
+    # rail span to the real available gap (inner_rail_base to
+    # margin_x - buffer) makes that geometrically impossible regardless
+    # of how many items end up on one side.
+    available_span = abs(margin_x - inner_rail_base) - RAIL_MARGIN_BUFFER
+    rail_spacing = available_span / max(1, n - 1) if n > 1 else 0.0
+    for i, (text, x, z, line_color, text_color) in enumerate(items):
+        label_z = MARGIN_Z_TOP - step * i if n > 1 else (MARGIN_Z_TOP + MARGIN_Z_BOTTOM) / 2.0
+        rail_x = inner_rail_base + rail_sign * i * rail_spacing
+        # type-opo: anchor -> (rail_x, z) [short] -> (rail_x, label_z) [vertical]
+        # -> (margin_x, label_z) [long, at the FINAL target z]
+        ax.plot([x, rail_x, rail_x, margin_x], [z, z, label_z, label_z],
+                color=line_color, linewidth=0.6, alpha=0.8, zorder=2)
+        ha = "left" if rail_sign > 0 else "right"
+        text_x = margin_x + (0.03 if rail_sign > 0 else -0.03)
+        # Text sits ABOVE the connecting line's z, not straddling it --
+        # at this item density a leader's own near-zero-length vertical
+        # rail segment (anchor.z close to its own assigned label_z) was
+        # rendering right through the first couple characters otherwise.
+        # 0.025 (not 0.012): multi-line labels (angle fields: name on
+        # one line, "43.9deg" on the next) are TALLER, and matplotlib's
+        # va="bottom" anchors the BOTTOM of the whole multi-line block
+        # at this z -- too small a gap left the bottom line still
+        # touching the connecting line for those entries specifically.
+        ax.annotate(text, (text_x, label_z + 0.025), fontsize=7, color=text_color,
+                    zorder=4, ha=ha, va="bottom")
+
+
+place_column(left_q, MARGIN_X_LEFT, rail_sign=-1.0, inner_rail_base=INNER_RAIL_BASE_LEFT)
+place_column(right_q, MARGIN_X_RIGHT, rail_sign=1.0, inner_rail_base=INNER_RAIL_BASE_RIGHT)
 
 ax.set_aspect("equal")
-ax.set_xlim(-0.95, 1.0)
+ax.set_xlim(-1.55, 1.55)
 ax.set_ylim(zmin - 0.05, zmax + 0.08)
 ax.axis("off")
 ax.set_title("ANNY-SOMA-X — 26 GarmentCode measurement locations\n"
