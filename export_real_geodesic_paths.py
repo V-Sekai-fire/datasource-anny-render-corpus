@@ -385,3 +385,40 @@ results = {
 print(results)
 with open(OUT_DIR / "angle_fields.json", "w") as f:
     json.dump(results, f, indent=2)
+
+# --- layout_hints.json: real positions needed to DRAW the measurement
+# diagram (front-view X/Z), so the renderer (Godot, not Python/
+# matplotlib -- iFire 2026-11-08: "the svg generator needs to be
+# godot") never has to re-derive anatomy on its own. Every number here
+# is real data this script already computed above for the real
+# measurements themselves (torso_heights, head_top_z, neck_z, bone
+# positions) -- this is an export of already-computed real values, not
+# new invented positions. The approximate-marker anchors (for the 4
+# angle/diff fields and the 2 still-unsettled fields, which have no
+# single vertex/curve to anchor to) use the SAME anatomical-height
+# offsets the retired render_anny_measurement_wireframe.py used.
+layout_hints = {
+    "axis_ticks": {
+        "head_l": [[0.0, 0.0, head_top_z], [0.0, 0.0, neck_z]],
+        "vert_bust_line": [[0.0, 0.0, neck_z], [0.0, 0.0, torso_heights["bust"]]],
+    },
+    "torso_heights": {k: round(float(v), 5) for k, v in torso_heights.items()},
+    "head_top_z": round(float(head_top_z), 5),
+    "neck_z": round(float(neck_z), 5),
+    # (dx, dz) anatomical marker anchors, dz relative to the named torso
+    # height / head_top_z, dx an absolute lateral offset -- the exact
+    # heuristic the retired matplotlib script used for its "approx"
+    # list, now exported as data instead of hand-tuned Python/GDScript
+    # constants duplicated in two places.
+    "marker_anchors": {
+        "shoulder_incl": {"dx": -0.24, "z_ref": "head_top_z", "dz": -0.19},
+        "hip_inclination": {"dx": 0.44, "z_ref": "hips", "dz": -0.02},
+        "arm_pose_angle": {"dx": 0.55, "z_ref": "bust", "dz": -0.22},
+        "crotch_hip_diff": {"dx": -0.06, "z_ref": "hips", "dz": -0.14},
+        "bust_line": {"dx": -0.40, "z_ref": "bust", "dz": 0.03},
+        "waist_over_bust_line": {"dx": -0.46, "z_ref": "waist_bust_mid", "dz": 0.0},
+    },
+}
+with open(OUT_DIR / "layout_hints.json", "w") as f:
+    json.dump(layout_hints, f, indent=2)
+print("wrote", OUT_DIR / "layout_hints.json")
