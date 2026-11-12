@@ -93,3 +93,11 @@ jobs:
       # runner that never will. Gating on it would fail this job for a fact about the
       # machine rather than about the repository.
       - run: pixi run -e anny python check_readme_claims.py
+
+  # prek runs the hygiene hooks in .pre-commit-config.yaml. These are not corpus gates;
+  # those live in the pixi jobs above. Kept out of the pixi environments on purpose.
+  prek:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: j178/prek-action@v3.1.0
