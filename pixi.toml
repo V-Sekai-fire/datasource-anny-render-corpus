@@ -137,6 +137,7 @@ anny = { features = ["anny"], no-default-feature = true }
 anny-mac = { features = ["anny-mac"], no-default-feature = true }
 asr = { features = ["asr"], no-default-feature = true }
 tts = { features = ["tts"], no-default-feature = true }
+gate = { features = ["gate"], no-default-feature = true }
 usd = { features = ["usd"], no-default-feature = true }
 
 [target.osx-arm64.dependencies]
@@ -463,3 +464,11 @@ torchaudio = "==2.5.1"
 mistral-common = ">=1.5"
 # Kyutai STT (CC-BY-4.0) via its own moshi package.
 moshi = "*"
+
+# prek runs the hygiene hooks in .pre-commit-config.yaml. Isolated so CI and the desk
+# install the same prek version from the lock, never from apt or brew.
+[feature.gate.dependencies]
+prek = "*"
+
+[feature.gate.tasks]
+prek = "prek run --all-files --show-diff-on-failure"
