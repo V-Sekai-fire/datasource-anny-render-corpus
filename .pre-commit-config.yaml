@@ -1,0 +1,18 @@
+# Hygiene hooks run by prek, locally and in CI. They fix whitespace and reject
+# files that are broken to commit (merge markers, unparseable YAML/TOML, large
+# blobs). They are not corpus gates: those need the corpus and live in `pixi run`.
+#
+# Excluded: the USD fixtures and anime_materials.usda, which gates compare byte
+# for byte, and parquet/SVG/binary outputs, which fixers would corrupt.
+exclude: ^(pixi\.lock|.*\.(usda|parquet|svg|png|jpg|webp|lean)|build/)
+repos:
+  - repo: builtin
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
